@@ -1,0 +1,35 @@
+build a payment saas called "monetamesh" to handles monetary payments from merchants
+
+Api surface for monetamesh
+
+Auth / merchant onboarding
+
+POST /v1/auth/signup — register a merchant + owner account
+POST /v1/auth/verify-email — confirm signup
+POST /v1/auth/login — issue access + refresh tokens
+POST /v1/auth/refresh — rotate access token
+POST /v1/auth/logout — revoke refresh token
+Merchant profile
+
+GET /v1/merchants/me — view own profile/config
+PATCH /v1/merchants/me — update business/KYC fields
+PATCH /v1/merchants/me/config — enabled currencies, payment methods, etc.
+API keys (for merchant's server-to-server integration)
+
+POST /v1/api-keys — create a key pair (secret shown once)
+GET /v1/api-keys — list keys (no secrets)
+POST /v1/api-keys/{id}/regenerate
+DELETE /v1/api-keys/{id} — revoke
+Payments (core)
+
+POST /v1/payments — create a payment/charge
+GET /v1/payments/{id} — fetch status
+GET /v1/payments — list/filter merchant's payments
+POST /v1/payments/{id}/refund — full/partial refund
+Webhooks (notify merchants of events)
+
+POST /v1/webhooks — register a merchant callback URL
+GET /v1/webhooks / DELETE /v1/webhooks/{id}
+Health
+
+GET /healthz, GET /readyz
