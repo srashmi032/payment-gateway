@@ -1,3 +1,4 @@
+import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -8,6 +9,8 @@ from passlib.context import CryptContext
 from app.config import settings
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+REFRESH_TOKEN_EXPIRE_DAYS = 30
 
 
 def hash_password(raw_password: str) -> str:
@@ -36,3 +39,13 @@ def create_access_token(*, user_id: str, merchant_id: str) -> str:
 
 def decode_access_token(token: str) -> dict[str, Any]:
     return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+
+
+def generate_refresh_token() -> str:
+    return secrets.token_urlsafe(48)
+
+
+def hash_refresh_token(raw_token: str) -> str:
+    # One-way hash — the DB never stores the raw refresh token, only enough
+    # to verify a presented token by re-hashing and comparing.
+    return hashlib.sha256(raw_token.encode()).hexdigest()
