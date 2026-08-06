@@ -10,6 +10,7 @@ from app.db import get_db
 from app.models import Merchant, RefreshToken, User
 from app.schemas import (
     LoginRequest,
+    RefreshRequest,
     SignupRequest,
     SignupResponse,
     TokenResponse,
@@ -28,6 +29,20 @@ from app.security import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
+
+
+async def _issue_tokens(db: AsyncSession, user: User) -> TokenResponse:
+    access_token = create_access_token(user_id=user.id, merchant_id=user.merchant_id)
+
+    raw_refresh_token = generate_refresh_token()
+    db.add(
+        RefreshToken(
+            user_id=user.id,
+            token_hash=hash_refresh_token(raw_refresh_token),
+            expires_at=datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+        )
+    )
+    return TokenResponse(access_token=access_token, refresh_token=raw_refresh_token)
 
 
 @router.post("/signup", response_model=SignupResponse, status_code=status.HTTP_201_CREATED)
@@ -79,16 +94,42 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)) -> To
     if user is None or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="invalid email or password")
 
-    access_token = create_access_token(user_id=user.id, merchant_id=user.merchant_id)
-
-    raw_refresh_token = generate_refresh_token()
-    db.add(
-        RefreshToken(
-            user_id=user.id,
-            token_hash=hash_refresh_token(raw_refresh_token),
-            expires_at=datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
-        )
-    )
+    tokens = await _issue_tokens(db, user)
     await db.commit()
+    return tokens
 
-    return TokenResponse(access_token=access_token, refresh_token=raw_refresh_token)
+
+@router.post("/refresh", response_model=TokenResponse)
+async def refresh(payload: RefreshRequest, db: AsyncSession = Depends(get_db)) -> TokenResponse:
+    token_hash = hash_refresh_token(payload.refresh_token)
+    token_row = await db.execute(select(RefreshToken).where(RefreshToken.token_hash == token_hash, RefreshToken.revoked_at == None))
+    token_row = token_row.scalar_one_or_none()
+    if (
+        token_row is None
+        or token_row.expires_at < datetime.now(timezone.utc)
+    ):
+        raise HTTPException(status_code=401, detail="invalid or expired refresh token")
+
+    user = await db.get(User, token_row.user_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail="invalid refresh token")
+
+    # Rotate: the presented refresh token is single-use — revoke it and
+    # issue a brand new access + refresh token pair. This limits how long
+    # a stolen refresh token stays useful and lets us detect reuse of an
+    # already-rotated token as a signal of compromise.
+    token_row.revoked_at = datetime.now(timezone.utc)
+
+    tokens = await _issue_tokens(db, user)
+    await db.commit()
+    return tokens
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(payload: RefreshRequest, db: AsyncSession = Depends(get_db)) -> None:
+    token_hash = hash_refresh_token(payload.refresh_token)
+    token_row = await db.scalar(select(RefreshToken).where(RefreshToken.token_hash == token_hash))
+
+    if token_row is not None and token_row.revoked_at is None:
+        token_row.revoked_at = datetime.now(timezone.utc)
+        await db.commit()
