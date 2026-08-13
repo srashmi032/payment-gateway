@@ -1,4 +1,6 @@
-from pydantic import BaseModel, EmailStr, Field
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class SignupRequest(BaseModel):
@@ -30,3 +32,35 @@ class TokenResponse(BaseModel):
 
 class RefreshRequest(BaseModel):
     refresh_token: str
+
+
+class MerchantRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    business_name: str
+    legal_name: str | None
+    business_category: str | None
+    settlement_bank_account_holder: str | None
+    settlement_bank_account_number: str | None
+    settlement_bank_routing_code: str | None
+    settlement_bank_name: str | None
+    enabled_currencies: list[str]
+    payment_methods: list[str]
+    created_at: datetime
+    updated_at: datetime
+
+
+class MerchantProfileUpdate(BaseModel):
+    business_name: str | None = Field(default=None, min_length=1, max_length=255)
+    legal_name: str | None = Field(default=None, max_length=255)
+    business_category: str | None = Field(default=None, max_length=100)
+    settlement_bank_account_holder: str | None = Field(default=None, max_length=255)
+    settlement_bank_account_number: str | None = Field(default=None, max_length=64)
+    settlement_bank_routing_code: str | None = Field(default=None, max_length=32)
+    settlement_bank_name: str | None = Field(default=None, max_length=255)
+
+
+class MerchantConfigUpdate(BaseModel):
+    enabled_currencies: list[str] | None = None
+    payment_methods: list[str] | None = None

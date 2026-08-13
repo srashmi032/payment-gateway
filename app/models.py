@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -20,7 +21,21 @@ class Merchant(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
     business_name: Mapped[str] = mapped_column(String(255))
+
+    legal_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    business_category: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    settlement_bank_account_holder: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    settlement_bank_account_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    settlement_bank_routing_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    settlement_bank_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    enabled_currencies: Mapped[list] = mapped_column(JSONB, default=list)
+    payment_methods: Mapped[list] = mapped_column(JSONB, default=list)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now
+    )
 
 
 class RefreshToken(Base):
