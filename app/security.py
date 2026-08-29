@@ -49,3 +49,23 @@ def hash_refresh_token(raw_token: str) -> str:
     # One-way hash — the DB never stores the raw refresh token, only enough
     # to verify a presented token by re-hashing and comparing.
     return hashlib.sha256(raw_token.encode()).hexdigest()
+
+
+_B62_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+
+
+def _random_b62(length: int) -> str:
+    return "".join(secrets.choice(_B62_ALPHABET) for _ in range(length))
+
+
+def generate_api_keypair() -> tuple[str, str]:
+    """Returns (public_key, raw_secret_key). The caller must show
+    raw_secret_key to the client exactly once and never persist it —
+    only its hash (hash_password) and prefix (secret_prefix) are stored."""
+    public_key = f"pk_{_random_b62(22)}"
+    secret_key = f"sk_{_random_b62(32)}"
+    return public_key, secret_key
+
+
+def secret_prefix(raw_secret_key: str) -> str:
+    return raw_secret_key[:12]

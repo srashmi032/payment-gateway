@@ -64,3 +64,24 @@ class MerchantProfileUpdate(BaseModel):
 class MerchantConfigUpdate(BaseModel):
     enabled_currencies: list[str] | None = None
     payment_methods: list[str] | None = None
+
+
+class ApiKeyCreateRequest(BaseModel):
+    name: str | None = Field(default=None, max_length=255)
+
+
+class ApiKeyRead(BaseModel):
+    """Never includes the secret — only shown once, at creation time."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str | None
+    public_key: str
+    secret_prefix: str
+    revoked_at: datetime | None
+    created_at: datetime
+
+
+class ApiKeyCreated(ApiKeyRead):
+    secret_key: str

@@ -51,6 +51,28 @@ class RefreshToken(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+class ApiKey(Base):
+    __tablename__ = "api_key"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
+    merchant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("merchant.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    public_key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    # One-way hash (bcrypt, via app.security.hash_password) — never store the
+    # raw secret. Verified by re-hashing a presented secret and comparing,
+    # same pattern as a login password.
+    hashed_secret: Mapped[str] = mapped_column(String(255))
+    # First ~12 chars of the raw secret, kept in cleartext so the dashboard
+    # can display "key ending in ..." without ever re-showing the full value.
+    secret_prefix: Mapped[str] = mapped_column(String(16))
+
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class User(Base):
     __tablename__ = "user"
 
