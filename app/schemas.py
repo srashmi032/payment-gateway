@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 
 class SignupRequest(BaseModel):
@@ -85,3 +85,67 @@ class ApiKeyRead(BaseModel):
 
 class ApiKeyCreated(ApiKeyRead):
     secret_key: str
+
+
+class CustomerInfo(BaseModel):
+    """Who a payment is from — deliberately minimal. At least one of
+    email/phone is required so a customer can actually be identified/
+    contacted; a name alone isn't enough to be useful."""
+
+    name: str | None = Field(default=None, max_length=255)
+    email: EmailStr | None = None
+    phone: str | None = Field(default=None, max_length=32)
+
+    @model_validator(mode="after")
+    def _require_email_or_phone(self) -> "CustomerInfo":
+        if not self.email and not self.phone:
+            raise ValueError("customer.email or customer.phone is required")
+        return self
+
+
+class CustomerRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str | None
+    email: str | None
+    phone: str | None
+
+
+class PaymentCreateRequest(BaseModel):
+    amount_minor_units: int = Field(gt=0, description="Smallest currency unit, e.g. cents/paise")
+    currency: str = Field(min_length=3, max_length=3)
+    description: str | None = Field(default=None, max_length=500)
+    customer: CustomerInfo
+
+
+class PaymentRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    merchant_id: str
+    customer: CustomerRead | None
+    amount_minor_units: int
+    currency: str
+    description: str | None
+    status: str
+    refunded_amount_minor_units: int
+    razorpay_order_id: str | None
+    razorpay_payment_id: str | None
+    platform_fee_minor_units: int
+    net_amount_minor_units: int | None
+    take_rate_bps_snapshot: int | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class PaymentCreated(PaymentRead):
+    """Returned from POST /v1/payments — includes what the merchant's
+    frontend needs to actually launch Razorpay Checkout for the customer."""
+
+    razorpay_key_id: str
+
+
+class RefundRequest(BaseModel):
+    # Omit or null = refund the full remaining (unrefunded) amount.
+    amount_minor_units: int | None = Field(default=None, gt=0)
