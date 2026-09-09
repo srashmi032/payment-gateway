@@ -53,6 +53,17 @@ async def create_payment(
     merchant = await db.get(Merchant, user.merchant_id)
     currency = payload.currency.upper()
 
+    if not merchant.razorpay_account_id:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "merchant has no Razorpay linked account yet — complete "
+                "POST /v1/merchants/me/razorpay-account before accepting "
+                "payments, otherwise your share of the money has nowhere "
+                "to be transferred to"
+            ),
+        )
+
     # Lenient on purpose: an empty enabled_currencies list means the
     # merchant hasn't restricted currencies yet, so anything is allowed.
     if merchant.enabled_currencies and currency not in merchant.enabled_currencies:
@@ -149,10 +160,17 @@ async def refund_payment(
             detail=f"refund amount {refund_amount} exceeds remaining refundable amount {remaining}",
         )
 
+    is_full_refund = refund_amount == remaining
     try:
         await create_refund(
             razorpay_payment_id=payment.razorpay_payment_id,
             amount_minor_units=refund_amount,
+            # Full refund also claws back the Route transfer already made
+            # to the merchant. Partial refunds do NOT reverse any transfer
+            # (see create_refund's docstring) — the merchant keeps their
+            # already-transferred share, and the refund comes out of the
+            # platform's own margin until per-transfer reversal is built.
+            reverse_all=is_full_refund,
         )
     except RazorpayError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc

@@ -24,10 +24,20 @@ class Merchant(Base):
 
     legal_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     business_category: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    contact_phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     settlement_bank_account_holder: Mapped[str | None] = mapped_column(String(255), nullable=True)
     settlement_bank_account_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
     settlement_bank_routing_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
     settlement_bank_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Razorpay Route "linked account" id (acc_xxx). Once set, this merchant's
+    # share of each captured payment gets transferred here — Razorpay (not
+    # this platform) then settles it to the merchant's own bank account.
+    # Requires this platform's Razorpay account to be Route/Partner-approved
+    # (see app/services/razorpay_client.py create_linked_account docstring).
+    razorpay_account_id: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, unique=True
+    )
 
     enabled_currencies: Mapped[list] = mapped_column(JSONB, default=list)
     payment_methods: Mapped[list] = mapped_column(JSONB, default=list)
@@ -134,6 +144,11 @@ class Payment(Base):
     razorpay_payment_id: Mapped[str | None] = mapped_column(
         String(64), nullable=True, unique=True, index=True
     )
+    # Set once the merchant's net share has been transferred to their Route
+    # linked account (see app/routers/webhooks.py). Null means either not
+    # captured yet, or the merchant has no linked account / the transfer
+    # failed — check logs in that case, funds sit in the platform account.
+    razorpay_transfer_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     # Platform economics — computed and snapshotted at capture time (see
     # app/services/fees.py), never before, since a payment that never

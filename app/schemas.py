@@ -41,12 +41,15 @@ class MerchantRead(BaseModel):
     business_name: str
     legal_name: str | None
     business_category: str | None
+    contact_phone: str | None
     settlement_bank_account_holder: str | None
     settlement_bank_account_number: str | None
     settlement_bank_routing_code: str | None
     settlement_bank_name: str | None
     enabled_currencies: list[str]
     payment_methods: list[str]
+    take_rate_bps: int
+    razorpay_account_id: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -55,6 +58,7 @@ class MerchantProfileUpdate(BaseModel):
     business_name: str | None = Field(default=None, min_length=1, max_length=255)
     legal_name: str | None = Field(default=None, max_length=255)
     business_category: str | None = Field(default=None, max_length=100)
+    contact_phone: str | None = Field(default=None, max_length=32)
     settlement_bank_account_holder: str | None = Field(default=None, max_length=255)
     settlement_bank_account_number: str | None = Field(default=None, max_length=64)
     settlement_bank_routing_code: str | None = Field(default=None, max_length=32)
@@ -132,6 +136,7 @@ class PaymentRead(BaseModel):
     refunded_amount_minor_units: int
     razorpay_order_id: str | None
     razorpay_payment_id: str | None
+    razorpay_transfer_id: str | None
     platform_fee_minor_units: int
     net_amount_minor_units: int | None
     take_rate_bps_snapshot: int | None
