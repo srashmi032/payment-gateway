@@ -6,6 +6,8 @@ from app.config import settings
 from app.routers.api_keys import router as api_keys_router
 from app.routers.auth import router as auth_router
 from app.routers.merchants import router as merchants_router
+from app.routers.payments import router as payments_router
+from app.routers.webhooks import router as webhooks_router
 
 logging.basicConfig(level=logging.INFO)
 
@@ -14,6 +16,8 @@ app = FastAPI(title=settings.app_name)
 app.include_router(auth_router)
 app.include_router(merchants_router)
 app.include_router(api_keys_router)
+app.include_router(payments_router)
+app.include_router(webhooks_router)
 
 
 @app.get("/healthz")

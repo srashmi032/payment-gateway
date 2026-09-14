@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
 
@@ -24,18 +24,51 @@ class Merchant(Base):
 
     legal_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     business_category: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    contact_phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     settlement_bank_account_holder: Mapped[str | None] = mapped_column(String(255), nullable=True)
     settlement_bank_account_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
     settlement_bank_routing_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
     settlement_bank_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
+    # Razorpay Route "linked account" id (acc_xxx). Once set, this merchant's
+    # share of each captured payment gets transferred here — Razorpay (not
+    # this platform) then settles it to the merchant's own bank account.
+    # Requires this platform's Razorpay account to be Route/Partner-approved
+    # (see app/services/razorpay_client.py create_linked_account docstring).
+    razorpay_account_id: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, unique=True
+    )
+
     enabled_currencies: Mapped[list] = mapped_column(JSONB, default=list)
     payment_methods: Mapped[list] = mapped_column(JSONB, default=list)
+
+    # Platform take-rate, in basis points (250 = 2.50%), deducted from each
+    # captured payment before computing the merchant's net amount. Snapshotted
+    # onto each Payment at capture time so later rate changes never alter
+    # historical fee reporting.
+    take_rate_bps: Mapped[int] = mapped_column(default=250)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now, onupdate=_now
     )
+
+
+class Customer(Base):
+    """The end customer paying a merchant — minimal by design: just enough
+    to identify who a payment is from. Not a full identity/auth system."""
+
+    __tablename__ = "customer"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
+    merchant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("merchant.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
 class RefreshToken(Base):
@@ -71,6 +104,63 @@ class ApiKey(Base):
 
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class Payment(Base):
+    __tablename__ = "payment"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
+    merchant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("merchant.id", ondelete="CASCADE"), index=True
+    )
+    # Nullable so existing dev rows created before this column existed don't
+    # break the migration — every payment created going forward always gets one
+    # (enforced by the API layer, not the DB, since this is dev-stage data).
+    customer_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("customer.id"), nullable=True, index=True
+    )
+    # eager-loaded (selectin) so listing payments never N+1s on customer info
+    customer: Mapped["Customer | None"] = relationship(lazy="selectin")
+
+    # Amounts are always integers in the smallest currency unit (cents/paise)
+    # — never floats — to avoid rounding errors.
+    amount_minor_units: Mapped[int] = mapped_column()
+    currency: Mapped[str] = mapped_column(String(3))
+    description: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # created (order placed, awaiting customer checkout) -> succeeded (webhook
+    # confirmed capture) | failed -> partially_refunded -> refunded.
+    # Driven by real Razorpay webhooks (see app/routers/webhooks.py), never
+    # self-reported by the merchant.
+    status: Mapped[str] = mapped_column(String(20), default="created")
+    refunded_amount_minor_units: Mapped[int] = mapped_column(default=0)
+
+    # Razorpay identifiers. order_id exists from creation; payment_id is only
+    # filled in once the customer actually completes checkout and Razorpay
+    # confirms capture via webhook.
+    razorpay_order_id: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, unique=True, index=True
+    )
+    razorpay_payment_id: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, unique=True, index=True
+    )
+    # Set once the merchant's net share has been transferred to their Route
+    # linked account (see app/routers/webhooks.py). Null means either not
+    # captured yet, or the merchant has no linked account / the transfer
+    # failed — check logs in that case, funds sit in the platform account.
+    razorpay_transfer_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    # Platform economics — computed and snapshotted at capture time (see
+    # app/services/fees.py), never before, since a payment that never
+    # captures never earns the platform anything.
+    platform_fee_minor_units: Mapped[int] = mapped_column(default=0)
+    net_amount_minor_units: Mapped[int | None] = mapped_column(nullable=True)
+    take_rate_bps_snapshot: Mapped[int | None] = mapped_column(nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now
+    )
 
 
 class User(Base):

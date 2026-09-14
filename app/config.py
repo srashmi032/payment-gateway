@@ -13,5 +13,12 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
 
+    # Razorpay (test-mode keys from the Razorpay dashboard — see .env.example
+    # for where to get them). Left blank until you have real ones; any call
+    # to app/services/razorpay_client.py will fail clearly until then.
+    razorpay_key_id: str = ""
+    razorpay_key_secret: str = ""
+    razorpay_webhook_secret: str = ""
+
 
 settings = Settings()
